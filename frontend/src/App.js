@@ -5,7 +5,7 @@ function App() {
   const [tasks, setTasks] = useState([]);
   const [title, setTitle] = useState("");
 
-  const API_URL = "http://localhost:3001/tasks";
+  const API_URL = "/tasks";
 
   const fetchTasks = async () => {
     const response = await fetch(API_URL);

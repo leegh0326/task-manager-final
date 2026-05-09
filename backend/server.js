@@ -1,6 +1,7 @@
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -8,58 +9,61 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-const db = new sqlite3.Database("./tasks.db");
+const dataFile = path.join(__dirname, "tasks.json");
 
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      completed INTEGER DEFAULT 0
-    )
-  `);
-});
+function readTasks() {
+  if (!fs.existsSync(dataFile)) {
+    fs.writeFileSync(dataFile, JSON.stringify([]));
+  }
+  return JSON.parse(fs.readFileSync(dataFile));
+}
 
-app.get("/", (req, res) => {
-  res.send("Task Manager API is running");
-});
+function writeTasks(tasks) {
+  fs.writeFileSync(dataFile, JSON.stringify(tasks, null, 2));
+}
 
 app.get("/tasks", (req, res) => {
-  db.all("SELECT * FROM tasks", [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+  res.json(readTasks());
 });
 
 app.post("/tasks", (req, res) => {
-  const { title } = req.body;
-  db.run("INSERT INTO tasks (title) VALUES (?)", [title], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ id: this.lastID, title, completed: 0 });
-  });
+  const tasks = readTasks();
+  const newTask = {
+    id: Date.now(),
+    title: req.body.title,
+    completed: false,
+  };
+  tasks.push(newTask);
+  writeTasks(tasks);
+  res.json(newTask);
 });
 
 app.put("/tasks/:id", (req, res) => {
-  const { completed } = req.body;
-  const { id } = req.params;
+  const tasks = readTasks();
+  const id = Number(req.params.id);
 
-  db.run(
-    "UPDATE tasks SET completed = ? WHERE id = ?",
-    [completed ? 1 : 0, id],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ id, completed });
-    }
+  const updatedTasks = tasks.map((task) =>
+    task.id === id ? { ...task, completed: req.body.completed } : task
   );
+
+  writeTasks(updatedTasks);
+  res.json({ message: "Task updated" });
 });
 
 app.delete("/tasks/:id", (req, res) => {
-  const { id } = req.params;
+  const tasks = readTasks();
+  const id = Number(req.params.id);
 
-  db.run("DELETE FROM tasks WHERE id = ?", [id], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: "Task deleted" });
-  });
+  const filteredTasks = tasks.filter((task) => task.id !== id);
+  writeTasks(filteredTasks);
+
+  res.json({ message: "Task deleted" });
+});
+
+app.use(express.static(path.join(__dirname, "../frontend/build")));
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../frontend/build/index.html"));
 });
 
 app.listen(PORT, () => {
